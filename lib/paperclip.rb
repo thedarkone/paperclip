@@ -299,7 +299,9 @@ module Paperclip
       # but nothing has been done to the attachment itself (i.e. it is 'clean') and we only need to rename the files
       unless (my_changes = changes).empty? || (clean_attachments = unchaned_attachments).empty?
         # how the instance looked before
-        old_instance = self.class.new(attributes.merge!(_old_attributes_hash(my_changes)))
+        old_instance = self.class.new
+        # get around protected attributes
+        old_instance.send(:attributes=, attributes.merge!(_old_attributes_hash(my_changes)), false)
         clean_attachments.each do |attachment|
           attachment.send(:queue_existing_for_rename, old_instance)
           attachment.send(:flush_renames)
