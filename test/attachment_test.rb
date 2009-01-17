@@ -369,6 +369,28 @@ class AttachmentTest < Test::Unit::TestCase
     
   end
 
+  context "Attachment with changed file_name attribute on its instance" do
+    setup do
+      rebuild_model :path => ":basename.:extension"
+      @dummy = Dummy.new
+      @file = File.new(File.join(File.dirname(__FILE__),
+                                 "fixtures",
+                                 "5k.png"), 'rb')
+      @dummy.avatar = @file
+      @dummy.avatar_file_name = "renamed.png"
+      @dummy.stubs(:changes).returns({"avatar_file_name" => ["5k.png", "renamed.png"]})
+      @dummy.avatar.stubs(:path_exists?).with('5k.png').returns(true)
+      @dummy.avatar.stubs(:dirty?).returns(false)
+    end
+
+    should "rename the avatar" do
+      File.expects(:rename).with("5k.png", "renamed.png")
+      @dummy.rename_attached_files
+    end
+
+    teardown { @file.close }
+  end
+
   context "An attachment" do
     setup do
       Paperclip::Attachment.default_options.merge!({

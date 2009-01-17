@@ -16,7 +16,7 @@ module Paperclip
       }
     end
 
-    attr_reader :name, :instance, :styles, :default_style, :convert_options, :queued_for_write
+    attr_reader :name, :instance, :styles, :default_style, :convert_options, :queued_for_write, :queued_for_rename
 
     # Creates an Attachment object. +name+ is the name of the attachment,
     # +instance+ is the ActiveRecord object instance it's attached to, and
@@ -39,6 +39,7 @@ module Paperclip
       @background        = options[:background].nil? ? instance.respond_to?(:spawn) : options[:background]
       @processors        = options[:processors] || [:thumbnail]
       @options           = options
+      @queued_for_rename = []
       @queued_for_delete = []
       @queued_for_write  = {}
       @errors            = {}
@@ -235,6 +236,10 @@ module Paperclip
     def file?
       !original_filename.blank?
     end
+    
+    def exists?(style = default_style)
+      path_exists?(path(style))
+    end
 
     # Writes the attachment-specific attribute on the instance. For example,
     # instance_write(:file_name, "me.jpg") will write "me.jpg" to the instance's
@@ -374,16 +379,30 @@ module Paperclip
       end
     end
 
+    def queue_existing_for_rename(old_instance)
+      old_attachment = old_instance.attachment_for(name)
+      @queued_for_rename += all_styles.map do |style|
+        old_path, new_path = old_attachment.path(style), path(style)
+        if old_path != new_path && path_exists?(old_path)
+          [old_path, new_path]
+        end
+      end.compact
+    end
+
     def queue_existing_for_delete #:nodoc:
       return unless file?
       log("Queueing the existing files for #{name} for deletion.")
-      @queued_for_delete += [:original, *@styles.keys].uniq.map do |style|
+      @queued_for_delete += all_styles.map do |style|
         path(style) if exists?(style)
       end.compact
       instance_write(:file_name, nil)
       instance_write(:content_type, nil)
       instance_write(:file_size, nil)
       instance_write(:updated_at, nil)
+    end
+
+    def all_styles
+      [:original, *@styles.keys].uniq
     end
 
     def flush_errors #:nodoc:

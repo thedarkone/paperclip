@@ -20,9 +20,9 @@ module Paperclip
       def self.extended base
       end
       
-      def exists?(style = default_style)
+      def path_exists?(path)
         if original_filename
-          File.exist?(path(style))
+          File.exist?(path)
         else
           false
         end
@@ -45,6 +45,15 @@ module Paperclip
           FileUtils.chmod(0644, path(style))
         end
         @queued_for_write = {}
+      end
+      
+      def flush_renames
+        logger.info("[paperclip] Renaming files for #{name}")
+        @queued_for_rename.each do |old_path, new_path|
+          logger.info("[paperclip] #{old_path} -> #{new_path}")
+          File.rename(old_path, new_path)
+        end
+        @queued_for_rename = []
       end
 
       def flush_deletes #:nodoc:
@@ -153,8 +162,8 @@ module Paperclip
         (creds[ENV['RAILS_ENV']] || creds).symbolize_keys
       end
       
-      def exists?(style = default_style)
-        s3_bucket.key(path(style)) ? true : false
+      def path_exists?(path)
+        s3_bucket.key(path) ? true : false
       end
 
       def s3_protocol
@@ -181,6 +190,11 @@ module Paperclip
           end
         end
         @queued_for_write = {}
+      end
+      
+      def flush_renames
+        logger.warn("[paperclip] Renaming files not implemented for S3")
+        @queued_for_rename = []
       end
 
       def flush_deletes #:nodoc:

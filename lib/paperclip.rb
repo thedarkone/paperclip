@@ -188,6 +188,7 @@ module Paperclip
       attachment_definitions[name] = {:validations => {}}.merge(options)
 
       after_save :save_attached_files
+      before_update :rename_attached_files
       before_destroy :destroy_attached_files
 
       define_callbacks :before_post_process, :after_post_process
@@ -281,22 +282,42 @@ module Paperclip
       @_paperclip_attachments[name] ||= Attachment.new(name, self, self.class.attachment_definitions[name])
     end
     
-    def each_attachment
-      self.class.attachment_definitions.each do |name, definition|
-        yield(name, attachment_for(name))
+    def all_attachments
+      self.class.attachment_definitions.map do |name, definition|
+        attachment_for(name)
+      end
+    end
+    
+    def save_attached_files
+      logger.info("[paperclip] Saving attachments.")
+      all_attachments.each(&:save)
+    end
+
+    def rename_attached_files
+      logger.info("[paperclip] Renaming attachments.")
+      # only trying to handle the case when some attributes of the model were changed (e.g. avatar_file_name),
+      # but nothing has been done to the attachment itself (i.e. it is 'clean') and we only need to rename the files
+      unless (my_changes = changes).empty? || (clean_attachments = unchaned_attachments).empty?
+        # how the instance looked before
+        old_instance = self.class.new(attributes.merge!(_old_attributes_hash(my_changes)))
+        clean_attachments.each do |attachment|
+          attachment.send(:queue_existing_for_rename, old_instance)
+          attachment.send(:flush_renames)
+        end
       end
     end
 
-    def save_attached_files
-      logger.info("[paperclip] Saving attachments.")
-      each_attachment do |name, attachment|
-        attachment.send(:save)
-      end
+    def unchaned_attachments
+      all_attachments.reject {|attachment| attachment.dirty? || !attachment.file?}
+    end
+
+    def _old_attributes_hash(changes)
+      changes.inject({}) {|h, (attr, (old_value, new_value))| h.update(attr => old_value) }
     end
 
     def destroy_attached_files
       logger.info("[paperclip] Deleting attachments.")
-      each_attachment do |name, attachment|
+      all_attachments.each do |attachment|
         attachment.send(:queue_existing_for_delete)
         attachment.send(:flush_deletes)
       end
